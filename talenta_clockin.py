@@ -64,15 +64,15 @@ CONFIG = {
 
 DESIRED_CAPS = {
     "platformName": "Android",
-    "platformVersion": CONFIG["platform_version"],
-    "deviceName": CONFIG["device_name"],
-    "appPackage": CONFIG["app_package"],
-    "appActivity": CONFIG["app_activity"],
-    "automationName": "UiAutomator2",
-    "noReset": True,               # Jangan reset app — tetap login
-    "fullReset": False,
-    "newCommandTimeout": 120,
-    "autoGrantPermissions": True,  # Auto allow permission kamera dll
+    "appium:platformVersion": CONFIG["platform_version"],
+    "appium:deviceName": CONFIG["device_name"],
+    "appium:appPackage": CONFIG["app_package"],
+    "appium:appActivity": CONFIG["app_activity"],
+    "appium:automationName": "UiAutomator2",
+    "appium:noReset": True,
+    "appium:fullReset": False,
+    "appium:newCommandTimeout": 120,
+    "appium:autoGrantPermissions": True,
 }
 
 # ================================
@@ -303,8 +303,21 @@ def main():
 
     driver = None
     try:
+        # Connect ke Appium v3
         log.info("Menghubungkan ke Appium...")
-        driver = webdriver.Remote(CONFIG["appium_host"], DESIRED_CAPS)
+        from appium.options import UiAutomator2Options
+        options = UiAutomator2Options()
+        options.platform_name = "Android"
+        options.platform_version = CONFIG["platform_version"]
+        options.device_name = CONFIG["device_name"]
+        options.app_package = CONFIG["app_package"]
+        options.app_activity = CONFIG["app_activity"]
+        options.no_reset = True
+        options.full_reset = False
+        options.new_command_timeout = 120
+        options.auto_grant_permissions = True
+
+        driver = webdriver.Remote(CONFIG["appium_host"], options=options)
         driver.implicitly_wait(5)
         log.info("✓ Terhubung ke Appium!")
 

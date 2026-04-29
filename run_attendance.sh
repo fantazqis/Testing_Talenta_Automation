@@ -27,9 +27,19 @@ sleep 5
 
 # Jalankan Appium server di background
 echo "Menjalankan Appium server..."
-appium --allow-insecure chromedriver_autodownload &
+appium &
 APPIUM_PID=$!
-sleep 8
+
+# Tunggu Appium benar-benar siap menerima koneksi
+echo "Menunggu Appium siap..."
+for i in $(seq 1 30); do
+  if curl -s http://localhost:4723/status > /dev/null 2>&1; then
+    echo "Appium siap!"
+    break
+  fi
+  echo "Menunggu... ($i/30)"
+  sleep 2
+done
 
 # Jalankan script Python
 echo "Menjalankan script Python..."

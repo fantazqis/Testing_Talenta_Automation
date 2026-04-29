@@ -58,8 +58,8 @@ CONFIG = {
     # Biasanya LDPlayer: emulator-5554
     "device_name": os.environ.get("DEVICE_NAME", "emulator-5554"),
 
-    # Versi Android di emulator kamu (cek di LDPlayer settings)
-    "platform_version": "9",
+    # Versi Android di emulator (GitHub Actions pakai Android 10)
+    "platform_version": "10",
 }
 
 DESIRED_CAPS = {

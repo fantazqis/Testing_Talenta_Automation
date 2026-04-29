@@ -224,41 +224,55 @@ def do_clock_action(driver, action="clock_in"):
 
     # Selector berdasarkan resource-id dari XML dump HP asli
     if action == "clock_in":
-        # Clock In = linClockButtons (container kiri)
-        btn_id = "co.talenta:id/linClockIn"
-        btn_id_fallback = "co.talenta:id/linClockButtons"
         label = "Clock In"
     else:
-        # Clock Out = linClockOut (sudah confirmed dari XML dump)
-        btn_id = "co.talenta:id/linClockOut"
-        btn_id_fallback = None
         label = "Clock Out"
 
-    # Tap tombol clock in/out pakai resource-id
-    tapped = False
+    # Tunggu halaman utama load dengan cek container clock buttons
     try:
-        el = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located((AppiumBy.ID, btn_id))
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((AppiumBy.ID, "co.talenta:id/linClockButtons"))
         )
-        el.click()
-        log.info(f"✓ Tap: {label} via {btn_id}")
-        time.sleep(2)
-        tapped = True
+        log.info("✓ Halaman utama terdeteksi")
     except TimeoutException:
-        log.warning(f"✗ {btn_id} tidak ketemu, coba fallback...")
+        log.error("✗ Halaman utama tidak muncul!")
+        return False
 
-    # Fallback selector
-    if not tapped and btn_id_fallback:
+    # Tap Clock In atau Clock Out
+    # linClockIn tidak clickable, jadi tap linClockButtons (sisi kiri = Clock In, sisi kanan = Clock Out)
+    if action == "clock_in":
+        # Coba tap langsung linClockIn dulu
         try:
-            el = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((AppiumBy.ID, btn_id_fallback))
-            )
-            el.click()
-            log.info(f"✓ Tap: {label} via {btn_id_fallback}")
+            el = driver.find_element(AppiumBy.ID, "co.talenta:id/linClockIn")
+            # Tap di tengah elemen linClockIn
+            bounds_el = driver.find_element(AppiumBy.ID, "co.talenta:id/tvClockIn")
+            bounds_el.click()
+            log.info("✓ Tap: Clock In via tvClockIn")
             time.sleep(2)
             tapped = True
-        except TimeoutException:
-            pass
+        except Exception:
+            # Fallback: tap koordinat sisi kiri linClockButtons
+            container = driver.find_element(AppiumBy.ID, "co.talenta:id/linClockButtons")
+            size = container.size
+            loc = container.location
+            # Tap 1/4 dari kiri container
+            x = loc['x'] + size['width'] // 4
+            y = loc['y'] + size['height'] // 2
+            driver.execute_script('mobile: clickGesture', {'x': x, 'y': y})
+            log.info(f"✓ Tap: Clock In via koordinat ({x}, {y})")
+            time.sleep(2)
+            tapped = True
+    else:
+        # Clock Out = linClockOut yang sudah clickable
+        try:
+            el = driver.find_element(AppiumBy.ID, "co.talenta:id/linClockOut")
+            el.click()
+            log.info("✓ Tap: Clock Out via linClockOut")
+            time.sleep(2)
+            tapped = True
+        except Exception as e:
+            log.error(f"✗ Tombol Clock Out tidak ditemukan: {e}")
+            tapped = False
 
     if not tapped:
         log.error(f"✗ Tombol {label} tidak ditemukan!")

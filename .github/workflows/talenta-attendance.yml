@@ -116,6 +116,7 @@ jobs:
           api-level: 29
           arch: x86_64
           profile: pixel_4
+          target: google_apis
           ram-size: 2048M
           heap-size: 512M
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim

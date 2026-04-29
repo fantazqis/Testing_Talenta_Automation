@@ -303,20 +303,19 @@ def main():
 
     driver = None
     try:
-        # Connect ke Appium
+        # Connect ke Appium menggunakan UiAutomator2Options (Appium Python Client v3)
         log.info("Menghubungkan ke Appium...")
-        from appium.options import AppiumOptions
-        options = AppiumOptions()
+        from appium.options.android.uiautomator2.base import UiAutomator2Options
+        options = UiAutomator2Options()
         options.platform_name = "Android"
-        options.set_capability("appium:platformVersion", CONFIG["platform_version"])
-        options.set_capability("appium:deviceName", CONFIG["device_name"])
-        options.set_capability("appium:appPackage", CONFIG["app_package"])
-        options.set_capability("appium:appActivity", CONFIG["app_activity"])
-        options.set_capability("appium:automationName", "UiAutomator2")
-        options.set_capability("appium:noReset", True)
-        options.set_capability("appium:fullReset", False)
-        options.set_capability("appium:newCommandTimeout", 120)
-        options.set_capability("appium:autoGrantPermissions", True)
+        options.platform_version = CONFIG["platform_version"]
+        options.device_name = CONFIG["device_name"]
+        options.app_package = CONFIG["app_package"]
+        options.app_activity = CONFIG["app_activity"]
+        options.no_reset = True
+        options.full_reset = False
+        options.new_command_timeout = 120
+        options.auto_grant_permissions = True
 
         driver = webdriver.Remote(CONFIG["appium_host"], options=options)
         driver.implicitly_wait(5)

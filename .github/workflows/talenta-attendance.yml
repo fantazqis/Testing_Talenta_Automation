@@ -128,11 +128,14 @@ jobs:
           DEVICE_NAME: emulator-5554
           ATTENDANCE_ACTION: ${{ env.ATTENDANCE_ACTION }}
 
-      # 11. Upload log sebagai artifact (untuk debugging)
-      - name: Upload Log
+      # 11. Upload log dan screenshot sebagai artifact (untuk debugging)
+      - name: Upload Debug Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: talenta-log-${{ github.run_id }}
-          path: talenta.log
+          name: talenta-debug-${{ github.run_id }}
+          path: |
+            talenta.log
+            screen_after_launch.png
+            page_source.xml
           retention-days: 7

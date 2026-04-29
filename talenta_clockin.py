@@ -349,6 +349,18 @@ def main():
         driver.implicitly_wait(5)
         log.info("✓ Terhubung ke Appium!")
 
+        # Screenshot untuk debug — lihat app tampil apa
+        time.sleep(5)
+        screenshot_path = "screen_after_launch.png"
+        driver.save_screenshot(screenshot_path)
+        log.info(f"✓ Screenshot disimpan: {screenshot_path}")
+
+        # Dump UI hierarchy untuk debug
+        page_source = driver.page_source
+        with open("page_source.xml", "w") as f:
+            f.write(page_source)
+        log.info("✓ UI hierarchy disimpan: page_source.xml")
+
         success = do_clock_action(driver, action)
 
         if success:

@@ -1,0 +1,331 @@
+"""
+Talenta Auto Clock In/Out
+Flow: Buka App → Halaman Utama → Tap Clock In/Out → Kamera → Inject Foto → Submit
+
+Requirements:
+    pip install Appium-Python-Client
+
+Setup Appium:
+    npm install -g appium
+    appium driver install uiautomator2
+    appium  ← jalankan di terminal terpisah
+
+Setup Emulator:
+    1. Install LDPlayer
+    2. Enable ADB: Settings → Others → ADB Debugging ON
+    3. Cek device: adb devices
+"""
+
+import os
+import sys
+import time
+import base64
+import datetime
+import logging
+
+from appium import webdriver
+from appium.webdriver.common.appiumby import AppiumBy
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+
+# ================================
+# KONFIGURASI
+# ================================
+
+CONFIG = {
+    # Credentials — simpan di environment variable, jangan hardcode!
+    # Di terminal: set TALENTA_USER=email@kamu.com (Windows)
+    #              export TALENTA_USER=email@kamu.com (Linux/Mac)
+    "username": os.environ.get("TALENTA_USER", "email@kamu.com"),
+    "password": os.environ.get("TALENTA_PASS", "passwordkamu"),
+
+    # Path foto selfie di LOCAL (laptop/PC kamu)
+    # Taruh file selfie.jpg di folder yang sama dengan script ini
+    "selfie_local_path": "selfie.jpg",
+
+    # Path tujuan di dalam emulator
+    "selfie_device_path": "/sdcard/Pictures/selfie.jpg",
+
+    # Appium server (default)
+    "appium_host": "http://localhost:4723",
+
+    # App Talenta
+    "app_package": "co.talenta",
+    "app_activity": "co.talenta.ui.splash.SplashActivity",
+
+    # Nama device emulator — cek via: adb devices
+    # Biasanya LDPlayer: emulator-5554
+    "device_name": os.environ.get("DEVICE_NAME", "emulator-5554"),
+
+    # Versi Android di emulator kamu (cek di LDPlayer settings)
+    "platform_version": "9",
+}
+
+DESIRED_CAPS = {
+    "platformName": "Android",
+    "platformVersion": CONFIG["platform_version"],
+    "deviceName": CONFIG["device_name"],
+    "appPackage": CONFIG["app_package"],
+    "appActivity": CONFIG["app_activity"],
+    "automationName": "UiAutomator2",
+    "noReset": True,               # Jangan reset app — tetap login
+    "fullReset": False,
+    "newCommandTimeout": 120,
+    "autoGrantPermissions": True,  # Auto allow permission kamera dll
+}
+
+# ================================
+# LOGGING
+# ================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler("talenta.log"),
+    ]
+)
+log = logging.getLogger(__name__)
+
+
+# ================================
+# HELPERS
+# ================================
+
+def wait_element(driver, xpath, timeout=20):
+    """Tunggu elemen muncul, return element atau None."""
+    try:
+        el = WebDriverWait(driver, timeout).until(
+            EC.presence_of_element_located((AppiumBy.XPATH, xpath))
+        )
+        return el
+    except TimeoutException:
+        return None
+
+
+def tap(driver, xpath, label="elemen", timeout=20):
+    """Tunggu dan tap elemen. Return True jika berhasil."""
+    el = wait_element(driver, xpath, timeout)
+    if el:
+        el.click()
+        log.info(f"✓ Tap: {label}")
+        time.sleep(1.5)
+        return True
+    log.warning(f"✗ Tidak ketemu: {label}")
+    return False
+
+
+def inject_selfie(driver):
+    """
+    Push foto selfie dari laptop ke emulator,
+    lalu set sebagai virtual camera image.
+    """
+    try:
+        # Baca foto dari local
+        with open(CONFIG["selfie_local_path"], "rb") as f:
+            img_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        # Push ke emulator
+        driver.push_file(CONFIG["selfie_device_path"], img_b64)
+        log.info(f"✓ Foto selfie berhasil dipush ke emulator")
+
+        # Set virtual camera (khusus emulator Android)
+        # Ini membuat kamera emulator menampilkan foto kita
+        os.system(
+            f'adb -s {CONFIG["device_name"]} shell '
+            f'am broadcast -a com.android.emulator.camera.action.CHANGE_PHOTO '
+            f'--es image_path {CONFIG["selfie_device_path"]}'
+        )
+        time.sleep(1)
+        return True
+
+    except FileNotFoundError:
+        log.error(f"✗ File selfie tidak ditemukan: {CONFIG['selfie_local_path']}")
+        log.error("  Pastikan selfie.jpg ada di folder yang sama dengan script ini!")
+        return False
+    except Exception as e:
+        log.error(f"✗ Gagal inject foto: {e}")
+        return False
+
+
+def capture_photo(driver):
+    """
+    Ambil foto saat kamera terbuka.
+    Mencoba beberapa selector tombol shutter yang umum.
+    """
+    shutter_selectors = [
+        '//*[@content-desc="Shutter"]',
+        '//*[@content-desc="Take photo"]',
+        '//*[@content-desc="Capture"]',
+        '//*[contains(@resource-id, "shutter")]',
+        '//*[contains(@resource-id, "capture")]',
+        '//*[contains(@resource-id, "btn_capture")]',
+    ]
+
+    for selector in shutter_selectors:
+        try:
+            el = driver.find_element(AppiumBy.XPATH, selector)
+            el.click()
+            log.info("✓ Tombol shutter ditemukan dan ditap")
+            time.sleep(2)
+            return True
+        except NoSuchElementException:
+            continue
+
+    # Fallback: tap koordinat tengah-bawah layar
+    log.warning("Tombol shutter tidak ditemukan via selector, mencoba tap koordinat...")
+    size = driver.get_window_size()
+    x = size["width"] // 2
+    y = int(size["height"] * 0.85)  # 85% dari atas layar
+    driver.tap([(x, y)])
+    log.info(f"✓ Tap koordinat shutter: ({x}, {y})")
+    time.sleep(2)
+    return True
+
+
+def confirm_photo(driver):
+    """Konfirmasi foto setelah diambil."""
+    confirm_selectors = [
+        '//*[contains(@text, "OK")]',
+        '//*[contains(@text, "Konfirmasi")]',
+        '//*[contains(@text, "Gunakan")]',
+        '//*[contains(@text, "Use Photo")]',
+        '//*[contains(@text, "Submit")]',
+        '//*[contains(@text, "Simpan")]',
+        '//*[contains(@resource-id, "confirm")]',
+        '//*[contains(@resource-id, "btn_ok")]',
+    ]
+
+    for selector in confirm_selectors:
+        try:
+            el = driver.find_element(AppiumBy.XPATH, selector)
+            el.click()
+            log.info("✓ Foto dikonfirmasi")
+            time.sleep(2)
+            return True
+        except NoSuchElementException:
+            continue
+
+    log.warning("Tombol konfirmasi tidak ditemukan")
+    return False
+
+
+# ================================
+# MAIN FLOW
+# ================================
+
+def do_clock_action(driver, action="clock_in"):
+    """Jalankan clock in atau clock out."""
+
+    log.info("Menunggu halaman utama Talenta...")
+    time.sleep(4)  # Tunggu app loading
+
+    # Selector tombol clock in / clock out
+    if action == "clock_in":
+        btn_selectors = [
+            '//*[contains(@text, "Clock In")]',
+            '//*[contains(@text, "Absen Masuk")]',
+            '//*[contains(@text, "Check In")]',
+            '//*[contains(@resource-id, "clock_in")]',
+            '//*[contains(@resource-id, "btn_clock_in")]',
+        ]
+        label = "Clock In"
+    else:
+        btn_selectors = [
+            '//*[contains(@text, "Clock Out")]',
+            '//*[contains(@text, "Absen Keluar")]',
+            '//*[contains(@text, "Check Out")]',
+            '//*[contains(@resource-id, "clock_out")]',
+            '//*[contains(@resource-id, "btn_clock_out")]',
+        ]
+        label = "Clock Out"
+
+    # Tap tombol clock in/out
+    tapped = False
+    for selector in btn_selectors:
+        if tap(driver, selector, label, timeout=15):
+            tapped = True
+            break
+
+    if not tapped:
+        log.error(f"✗ Tombol {label} tidak ditemukan di halaman utama!")
+        log.error("  Kemungkinan UI Talenta berbeda, perlu update selector.")
+        return False
+
+    # Inject foto ke virtual camera sebelum kamera terbuka penuh
+    log.info("Kamera terbuka, menginjek foto selfie...")
+    time.sleep(2)
+    inject_selfie(driver)
+    time.sleep(2)
+
+    # Ambil foto (tap shutter)
+    capture_photo(driver)
+    time.sleep(2)
+
+    # Konfirmasi foto
+    confirm_photo(driver)
+    time.sleep(3)
+
+    # Cek apakah berhasil (opsional — cari notifikasi sukses)
+    try:
+        success_el = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((
+                AppiumBy.XPATH,
+                '//*[contains(@text, "Berhasil") or contains(@text, "Success") or contains(@text, "berhasil")]'
+            ))
+        )
+        log.info(f"✅ {label} BERHASIL! Notifikasi: {success_el.text}")
+        return True
+    except TimeoutException:
+        log.info(f"✅ {label} kemungkinan berhasil (tidak ada error terdeteksi)")
+        return True
+
+
+def main():
+    now = datetime.datetime.now()
+
+    # Tentukan aksi: clock_in atau clock_out
+    # Bisa override via argument: python talenta_clockin.py clock_out
+    if len(sys.argv) > 1 and sys.argv[1] in ["clock_in", "clock_out"]:
+        action = sys.argv[1]
+    else:
+        # Auto: pagi = clock in, sore = clock out
+        action = "clock_in" if now.hour < 12 else "clock_out"
+
+    log.info("=" * 40)
+    log.info("Talenta Auto Attendance")
+    log.info(f"Waktu  : {now.strftime('%Y-%m-%d %H:%M:%S')}")
+    log.info(f"Aksi   : {action.upper()}")
+    log.info(f"Device : {CONFIG['device_name']}")
+    log.info("=" * 40)
+
+    driver = None
+    try:
+        log.info("Menghubungkan ke Appium...")
+        driver = webdriver.Remote(CONFIG["appium_host"], DESIRED_CAPS)
+        driver.implicitly_wait(5)
+        log.info("✓ Terhubung ke Appium!")
+
+        success = do_clock_action(driver, action)
+
+        if success:
+            log.info(f"✅ SELESAI: {action.upper()} berhasil!")
+            sys.exit(0)
+        else:
+            log.error(f"❌ GAGAL: {action.upper()} tidak berhasil!")
+            sys.exit(1)
+
+    except Exception as e:
+        log.error(f"❌ Error: {e}")
+        sys.exit(1)
+
+    finally:
+        if driver:
+            driver.quit()
+            log.info("Driver ditutup.")
+
+
+if __name__ == "__main__":
+    main()

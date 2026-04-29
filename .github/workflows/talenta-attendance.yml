@@ -1,0 +1,150 @@
+# .github/workflows/talenta-attendance.yml
+#
+# Struktur folder yang dibutuhkan di repo:
+#
+# repo-kamu/
+# ├── .github/
+# │   └── workflows/
+# │       └── talenta-attendance.yml   ← file ini
+# ├── talenta_clockin.py               ← script python
+# ├── selfie.jpg                       ← foto selfie kamu
+# └── requirements.txt                 ← dependencies python
+#
+# NOTE: talenta.apk tidak perlu ada di repo,
+#       otomatis didownload dari GitHub Release saat workflow jalan
+
+name: Talenta Auto Attendance
+
+on:
+  schedule:
+    # Jadwal dalam UTC (WIB = UTC+7, jadi kurangi 7 jam)
+    - cron: '0 1 * * 1-5'   # 08:00 WIB Senin-Jumat (Clock In)
+    - cron: '0 10 * * 1-5'  # 17:00 WIB Senin-Jumat (Clock Out)
+
+  # Tombol manual — bisa trigger dari GitHub UI
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Pilih aksi'
+        required: true
+        default: 'clock_in'
+        type: choice
+        options:
+          - clock_in
+          - clock_out
+
+jobs:
+  attendance:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout repo
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Enable KVM untuk emulator Android (wajib di GitHub Actions)
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # 3. Setup Java (dibutuhkan Android emulator)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 4. Setup Python
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 5. Install Python dependencies
+      - name: Install Python Dependencies
+        run: pip install -r requirements.txt
+
+      # 6. Setup Node.js untuk Appium
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 7. Install Appium
+      - name: Install Appium
+        run: |
+          npm install -g appium
+          appium driver install uiautomator2
+          appium --version
+
+      # 8. Setup Android SDK / ADB
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 9. Download APK Talenta dari GitHub Release
+      - name: Download Talenta APK
+        run: |
+          wget -O talenta.apk "https://github.com/fantazqis/Testing_Talenta_Automation/releases/download/version_1.0/Talenta.apk"
+          echo "APK berhasil didownload!"
+          ls -lh talenta.apk
+
+      # 10. Jalankan Android Emulator + Script Appium
+      - name: Run Attendance Script
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          arch: x86_64
+          profile: pixel_4
+          ram-size: 2048M
+          heap-size: 512M
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            # Tentukan aksi (clock_in atau clock_out)
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              ACTION="${{ github.event.inputs.action }}"
+            elif [ "$(date -u +%H)" = "01" ]; then
+              ACTION="clock_in"
+            else
+              ACTION="clock_out"
+            fi
+
+            echo "Aksi: $ACTION"
+
+            # Tunggu emulator benar-benar siap
+            adb wait-for-device
+            adb shell input keyevent 82
+
+            # Install APK Talenta ke emulator
+            adb install -r talenta.apk
+            echo "APK berhasil diinstall!"
+
+            # Tunggu instalasi selesai
+            sleep 5
+
+            # Jalankan Appium server di background
+            appium --allow-insecure chromedriver_autodownload &
+            APPIUM_PID=$!
+            sleep 5
+
+            # Jalankan script Python
+            python talenta_clockin.py $ACTION
+
+            # Matikan Appium
+            kill $APPIUM_PID
+
+        env:
+          TALENTA_USER: ${{ secrets.TALENTA_USER }}
+          TALENTA_PASS: ${{ secrets.TALENTA_PASS }}
+          DEVICE_NAME: emulator-5554
+
+      # 11. Upload log sebagai artifact (untuk debugging)
+      - name: Upload Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: talenta-log-${{ github.run_id }}\
+          path: talenta.log
+          retention-days: 7

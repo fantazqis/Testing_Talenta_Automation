@@ -1,0 +1,5 @@
+# Jangan upload file ini ke repo publik!
+*.log
+.env
+__pycache__/
+*.pyc

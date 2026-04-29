@@ -33,6 +33,9 @@ on:
           - clock_in
           - clock_out
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   attendance:
     runs-on: ubuntu-latest
@@ -83,12 +86,28 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 9. Download APK Talenta dari GitHub Release
+      # 9. Download APK Talenta dari GitHub Release (pakai token supaya bisa akses repo private)
       - name: Download Talenta APK
         run: |
-          wget -O talenta.apk "https://github.com/fantazqis/Testing_Talenta_Automation/releases/download/version_1.0/Talenta.apk"
+          curl -L \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/octet-stream" \
+            "https://api.github.com/repos/fantazqis/Testing_Talenta_Automation/releases/assets/$(curl -s -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' https://api.github.com/repos/fantazqis/Testing_Talenta_Automation/releases/tags/version_1.0 | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['id'] for a in assets if 'Talenta' in a['name']))")" \
+            -o talenta.apk
           echo "APK berhasil didownload!"
           ls -lh talenta.apk
+
+      # 9.5 Tentukan aksi clock_in atau clock_out
+      - name: Set Attendance Action
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "ATTENDANCE_ACTION=${{ github.event.inputs.action }}" >> $GITHUB_ENV
+          elif [ "$(date -u +%H)" = "01" ]; then
+            echo "ATTENDANCE_ACTION=clock_in" >> $GITHUB_ENV
+          else
+            echo "ATTENDANCE_ACTION=clock_out" >> $GITHUB_ENV
+          fi
+          echo "Aksi yang dipilih: $ATTENDANCE_ACTION"
 
       # 10. Jalankan Android Emulator + Script Appium
       - name: Run Attendance Script
@@ -101,50 +120,19 @@ jobs:
           heap-size: 512M
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          script: |
-            # Tentukan aksi (clock_in atau clock_out)
-            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-              ACTION="${{ github.event.inputs.action }}"
-            elif [ "$(date -u +%H)" = "01" ]; then
-              ACTION="clock_in"
-            else
-              ACTION="clock_out"
-            fi
-
-            echo "Aksi: $ACTION"
-
-            # Tunggu emulator benar-benar siap
-            adb wait-for-device
-            adb shell input keyevent 82
-
-            # Install APK Talenta ke emulator
-            adb install -r talenta.apk
-            echo "APK berhasil diinstall!"
-
-            # Tunggu instalasi selesai
-            sleep 5
-
-            # Jalankan Appium server di background
-            appium --allow-insecure chromedriver_autodownload &
-            APPIUM_PID=$!
-            sleep 5
-
-            # Jalankan script Python
-            python talenta_clockin.py $ACTION
-
-            # Matikan Appium
-            kill $APPIUM_PID
+          script: bash run_attendance.sh
 
         env:
           TALENTA_USER: ${{ secrets.TALENTA_USER }}
           TALENTA_PASS: ${{ secrets.TALENTA_PASS }}
           DEVICE_NAME: emulator-5554
+          ATTENDANCE_ACTION: ${{ env.ATTENDANCE_ACTION }}
 
       # 11. Upload log sebagai artifact (untuk debugging)
       - name: Upload Log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: talenta-log-${{ github.run_id }}\
+          name: talenta-log-${{ github.run_id }}
           path: talenta.log
           retention-days: 7

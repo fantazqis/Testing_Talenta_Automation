@@ -86,13 +86,11 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      # 9. Download APK Talenta dari GitHub Release (pakai token supaya bisa akses repo private)
+      # 9. Download APK Talenta dari GitHub Release
       - name: Download Talenta APK
         run: |
           curl -L \
-            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            -H "Accept: application/octet-stream" \
-            "https://api.github.com/repos/fantazqis/Testing_Talenta_Automation/releases/assets/$(curl -s -H 'Authorization: token ${{ secrets.GITHUB_TOKEN }}' https://api.github.com/repos/fantazqis/Testing_Talenta_Automation/releases/tags/version_1.0 | python3 -c "import sys,json; assets=json.load(sys.stdin)['assets']; print(next(a['id'] for a in assets if 'Talenta' in a['name']))")" \
+            "https://github.com/fantazqis/Testing_Talenta_Automation/releases/download/version_1.0/Talenta-2.42.1.apk" \
             -o talenta.apk
           echo "APK berhasil didownload!"
           ls -lh talenta.apk

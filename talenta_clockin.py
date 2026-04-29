@@ -52,7 +52,7 @@ CONFIG = {
 
     # App Talenta
     "app_package": "co.talenta",
-    "app_activity": ".ui.splash.SplashActivity",
+    "app_activity": "co.talenta.modul.main.MainActivity",
 
     # Nama device emulator — cek via: adb devices
     # Biasanya LDPlayer: emulator-5554
@@ -222,58 +222,72 @@ def do_clock_action(driver, action="clock_in"):
     log.info("Menunggu halaman utama Talenta...")
     time.sleep(4)  # Tunggu app loading
 
-    # Selector tombol clock in / clock out
+    # Selector berdasarkan resource-id dari XML dump HP asli
     if action == "clock_in":
-        btn_selectors = [
-            '//*[contains(@text, "Clock In")]',
-            '//*[contains(@text, "Absen Masuk")]',
-            '//*[contains(@text, "Check In")]',
-            '//*[contains(@resource-id, "clock_in")]',
-            '//*[contains(@resource-id, "btn_clock_in")]',
-        ]
+        # Clock In = linClockButtons (container kiri)
+        btn_id = "co.talenta:id/linClockIn"
+        btn_id_fallback = "co.talenta:id/linClockButtons"
         label = "Clock In"
     else:
-        btn_selectors = [
-            '//*[contains(@text, "Clock Out")]',
-            '//*[contains(@text, "Absen Keluar")]',
-            '//*[contains(@text, "Check Out")]',
-            '//*[contains(@resource-id, "clock_out")]',
-            '//*[contains(@resource-id, "btn_clock_out")]',
-        ]
+        # Clock Out = linClockOut (sudah confirmed dari XML dump)
+        btn_id = "co.talenta:id/linClockOut"
+        btn_id_fallback = None
         label = "Clock Out"
 
-    # Tap tombol clock in/out
+    # Tap tombol clock in/out pakai resource-id
     tapped = False
-    for selector in btn_selectors:
-        if tap(driver, selector, label, timeout=15):
+    try:
+        el = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((AppiumBy.ID, btn_id))
+        )
+        el.click()
+        log.info(f"✓ Tap: {label} via {btn_id}")
+        time.sleep(2)
+        tapped = True
+    except TimeoutException:
+        log.warning(f"✗ {btn_id} tidak ketemu, coba fallback...")
+
+    # Fallback selector
+    if not tapped and btn_id_fallback:
+        try:
+            el = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((AppiumBy.ID, btn_id_fallback))
+            )
+            el.click()
+            log.info(f"✓ Tap: {label} via {btn_id_fallback}")
+            time.sleep(2)
             tapped = True
-            break
+        except TimeoutException:
+            pass
 
     if not tapped:
-        log.error(f"✗ Tombol {label} tidak ditemukan di halaman utama!")
-        log.error("  Kemungkinan UI Talenta berbeda, perlu update selector.")
+        log.error(f"✗ Tombol {label} tidak ditemukan!")
         return False
 
-    # Inject foto ke virtual camera sebelum kamera terbuka penuh
+    # Inject foto ke virtual camera
     log.info("Kamera terbuka, menginjek foto selfie...")
-    time.sleep(2)
+    time.sleep(3)
     inject_selfie(driver)
     time.sleep(2)
 
-    # Ambil foto (tap shutter)
-    capture_photo(driver)
-    time.sleep(2)
+    # Tap tombol Kirim (btnSubmit — confirmed dari XML dump)
+    try:
+        submit_btn = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((AppiumBy.ID, "co.talenta:id/btnSubmit"))
+        )
+        submit_btn.click()
+        log.info("✓ Tap: Kirim (btnSubmit)")
+        time.sleep(3)
+    except TimeoutException:
+        log.error("✗ Tombol Kirim (btnSubmit) tidak ditemukan!")
+        return False
 
-    # Konfirmasi foto
-    confirm_photo(driver)
-    time.sleep(3)
-
-    # Cek apakah berhasil (opsional — cari notifikasi sukses)
+    # Cek apakah berhasil
     try:
         success_el = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((
                 AppiumBy.XPATH,
-                '//*[contains(@text, "Berhasil") or contains(@text, "Success") or contains(@text, "berhasil")]'
+                '//*[contains(@text, "Berhasil") or contains(@text, "berhasil") or contains(@text, "Success")]'
             ))
         )
         log.info(f"✅ {label} BERHASIL! Notifikasi: {success_el.text}")

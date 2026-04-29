@@ -25,6 +25,13 @@ adb install -r talenta.apk
 echo "APK berhasil diinstall!"
 sleep 5
 
+# Cek activity name yang benar dari APK
+echo "=== INFO APK TALENTA ==="
+adb shell pm dump co.talenta | grep -A 5 "Activity"
+echo "=== MAIN ACTIVITY ==="
+adb shell cmd package resolve-activity --brief co.talenta
+echo "========================"
+
 # Jalankan Appium server di background
 echo "Menjalankan Appium server..."
 appium &

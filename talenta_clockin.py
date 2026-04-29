@@ -52,7 +52,7 @@ CONFIG = {
 
     # App Talenta
     "app_package": "co.talenta",
-    "app_activity": "co.talenta.ui.splash.SplashActivity",
+    "app_activity": ".ui.splash.SplashActivity",
 
     # Nama device emulator — cek via: adb devices
     # Biasanya LDPlayer: emulator-5554

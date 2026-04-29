@@ -4,13 +4,15 @@
 
 set -e  # Stop jika ada error
 
-# Tentukan aksi berdasarkan environment variable dari workflow
-ACTION="${ATTENDANCE_ACTION}"
+# Set working directory ke GitHub workspace
+WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
+cd "$WORKSPACE"
 
 echo "================================"
 echo "Talenta Auto Attendance"
-echo "Aksi: $ACTION"
+echo "Aksi: $ATTENDANCE_ACTION"
 echo "Waktu: $(date)"
+echo "Workspace: $WORKSPACE"
 echo "================================"
 
 # Tunggu emulator benar-benar siap
@@ -50,8 +52,14 @@ done
 
 # Jalankan script Python
 echo "Menjalankan script Python..."
+ACTION="${ATTENDANCE_ACTION}"
 python talenta_clockin.py "$ACTION"
 EXIT_CODE=$?
+
+# Copy semua output file ke workspace supaya bisa diupload sebagai artifact
+cp talenta.log "$WORKSPACE/" 2>/dev/null || true
+cp screen_after_launch.png "$WORKSPACE/" 2>/dev/null || true
+cp page_source.xml "$WORKSPACE/" 2>/dev/null || true
 
 # Matikan Appium
 kill $APPIUM_PID 2>/dev/null || true
